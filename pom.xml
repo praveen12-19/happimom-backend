@@ -59,6 +59,13 @@
             <version>${lombok.version}</version>
             <scope>compile</scope>
         </dependency>
+
+        <!-- dotenv-java to load .env variables automatically into Spring Environment -->
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.1.0</version>
+        </dependency>
     </dependencies>
 
     <build>

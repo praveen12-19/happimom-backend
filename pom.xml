@@ -59,17 +59,11 @@
             <scope>compile</scope>
         </dependency>
 
-        <!-- Spring Boot WebFlux Starter for WebClient and Reactive SSE Streaming -->
+        <!-- dotenv-java to load .env variables automatically into Spring Environment -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
-        </dependency>
-
-        <!-- Cloudinary Java SDK for Medical Receipts & Document Storage -->
-        <dependency>
-            <groupId>com.cloudinary</groupId>
-            <artifactId>cloudinary-http44</artifactId>
-            <version>1.38.0</version>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.1.0</version>
         </dependency>
     </dependencies>
 

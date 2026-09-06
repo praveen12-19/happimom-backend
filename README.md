@@ -78,8 +78,6 @@ Backend/
    ```
    The API will start on `http://localhost:8080`.
 
-> ⚠️ Never commit your real `.env` file. Only `.env.example` (with placeholder values)
-> should be pushed to GitHub.
 
 ## API Overview
 

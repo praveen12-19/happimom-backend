@@ -1,25 +1,42 @@
 package com.healthcare.happimom.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = {"motherDetails", "partnerDetails", "parentDetails", "pregnancyTimeline", "doctorClinicSupport", "childrenDetails", "fileStorages", "memories"})
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
+
+    private String name;
 
     @Column(nullable = false, unique = true)
     private String email;
@@ -27,32 +44,108 @@ public class User {
     @Column(nullable = false)
     private String password;
 
-    @Column(nullable = false)
+    @Column(name = "profile_complete", nullable = false)
     private boolean profileComplete = false;
 
-    private String name;
-    private Integer age;
-    private String dob;
-    private String husbandName;
-    private String husbandContact;
-    private String parentName;
-    private String parentContact;
-    private String marriageDate;
-    private String pregnancyDate;
+    // Relational Mappings to Child Tables
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JsonManagedReference
+    private MotherDetail motherDetails;
 
-    private String bloodGroup;
-    private Double height;
-    private Double weight;
-    private String emergencyContact;
-    private String address;
-    private String city;
-    private String state;
-    private String country;
-    private String zipCode;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JsonManagedReference
+    private PartnerDetail partnerDetails;
 
-    @Column(length = 1000)
-    private String medicalConditions;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JsonManagedReference
+    private ParentDetail parentDetails;
 
-    @Column(length = 1000)
-    private String allergies;
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JsonManagedReference
+    private PregnancyTimeline pregnancyTimeline;
+
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
+    @JsonManagedReference
+    private DoctorClinicSupport doctorClinicSupport;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<ChildrenDetail> childrenDetails = new ArrayList<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<FileStorage> fileStorages = new ArrayList<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Memory> memories = new ArrayList<>();
+
+    // Convenience backward-compatible getters for AI, Frontend, and existing services
+    public String getPregnancyDate() {
+        return pregnancyTimeline != null ? pregnancyTimeline.getPregnancyDate() : null;
+    }
+
+    public String getMedicalConditions() {
+        return pregnancyTimeline != null ? pregnancyTimeline.getMedicalConditions() : null;
+    }
+
+    public String getAllergies() {
+        return pregnancyTimeline != null ? pregnancyTimeline.getAllergies() : null;
+    }
+
+    public String getBloodGroup() {
+        return motherDetails != null ? motherDetails.getBloodGroup() : null;
+    }
+
+    public String getCity() {
+        return motherDetails != null ? motherDetails.getCity() : null;
+    }
+
+    public String getAddress() {
+        return motherDetails != null ? motherDetails.getAddress() : null;
+    }
+
+    public String getMobileNumber() {
+        return motherDetails != null ? motherDetails.getMobileNumber() : null;
+    }
+
+    public String getDob() {
+        return motherDetails != null ? motherDetails.getDob() : null;
+    }
+
+    public Boolean getHasChildren() {
+        return motherDetails != null ? motherDetails.getHasChildren() : null;
+    }
+
+    public Integer getChildrenCount() {
+        return motherDetails != null ? motherDetails.getChildrenCount() : null;
+    }
+
+    public String getHusbandName() {
+        return partnerDetails != null ? partnerDetails.getPartnerName() : null;
+    }
+
+    public String getHusbandContact() {
+        return partnerDetails != null ? partnerDetails.getPartnerContact() : null;
+    }
+
+    public String getParentName() {
+        return parentDetails != null ? parentDetails.getParentName() : null;
+    }
+
+    public String getParentContact() {
+        return parentDetails != null ? parentDetails.getParentContact() : null;
+    }
+
+    public String getEmergencyContact() {
+        return doctorClinicSupport != null ? doctorClinicSupport.getDoctorName() : null;
+    }
+
+    public String getDoctorPhone() {
+        return doctorClinicSupport != null ? doctorClinicSupport.getDoctorPhone() : null;
+    }
+
+    public String getDoctorAddress() {
+        return doctorClinicSupport != null ? doctorClinicSupport.getDoctorAddress() : null;
+    }
 }

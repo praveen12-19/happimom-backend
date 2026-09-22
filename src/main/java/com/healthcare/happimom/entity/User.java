@@ -27,7 +27,7 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"motherDetails", "partnerDetails", "parentDetails", "pregnancyTimeline", "doctorClinicSupport", "childrenDetails", "fileStorages", "memories"})
+@ToString(exclude = {"motherDetails", "partnerDetails", "parentDetails", "pregnancyTimeline", "doctorClinicSupport", "childrenDetails", "fileStorages", "memories", "appointments"})
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class User {
 
@@ -80,6 +80,10 @@ public class User {
     @JsonManagedReference
     private List<Memory> memories = new ArrayList<>();
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonManagedReference
+    private List<Appointment> appointments = new ArrayList<>();
+
     // Convenience backward-compatible getters for AI, Frontend, and existing services
     public String getPregnancyDate() {
         return pregnancyTimeline != null ? pregnancyTimeline.getPregnancyDate() : null;
@@ -111,6 +115,10 @@ public class User {
 
     public String getDob() {
         return motherDetails != null ? motherDetails.getDob() : null;
+    }
+
+    public Integer getAge() {
+        return motherDetails != null ? motherDetails.getAge() : null;
     }
 
     public Boolean getHasChildren() {

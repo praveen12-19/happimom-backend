@@ -61,7 +61,8 @@ public class MemoryServiceImpl implements MemoryService {
         if (fileUrl == null || fileUrl.isBlank()) {
             throw new IOException("Cloudinary did not return a valid secure URL for this file.");
         }
-        log.info("Uploaded memory file to Cloudinary: {}, secure_url: {}", file.getOriginalFilename(), fileUrl);
+        String publicId = (String) uploadResult.get("public_id");
+        log.info("Uploaded memory file to Cloudinary: {}, public_id: {}, secure_url: {}", file.getOriginalFilename(), publicId, fileUrl);
 
         // Determine accurate content type for videos, images, and PDFs
         String fileType = file.getContentType();
@@ -83,6 +84,7 @@ public class MemoryServiceImpl implements MemoryService {
         Memory memory = new Memory();
         memory.setUser(user);
         memory.setFileUrl(fileUrl); // Store the Cloudinary link of the file
+        memory.setPublicId(publicId); // Store the Cloudinary publicId for removal
         memory.setFileName(file.getOriginalFilename() != null ? file.getOriginalFilename() : "memory_file");
         memory.setFileType(fileType);
         memory.setFileSize(file.getSize());
@@ -103,6 +105,20 @@ public class MemoryServiceImpl implements MemoryService {
         Optional<Memory> memoryOpt = memoryRepository.findByIdAndUserId(memoryId, userId);
         if (memoryOpt.isPresent()) {
             Memory memory = memoryOpt.get();
+
+            // 1. Delete asset from Cloudinary storage
+            try {
+                boolean cldDeleted = cloudinaryService.deleteMedia(
+                        memory.getPublicId(),
+                        memory.getFileUrl(),
+                        memory.getFileType()
+                );
+                log.info("Cloudinary removal for memory id {}: result={}", memoryId, cldDeleted);
+            } catch (Exception e) {
+                log.warn("Error deleting file from Cloudinary for memory id {}: {}", memoryId, e.getMessage());
+            }
+
+            // 2. Delete memory record from MySQL database
             memoryRepository.delete(memory);
             log.info("Deleted memory id {} from memories entity for user {}", memoryId, userId);
             return true;

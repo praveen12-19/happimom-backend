@@ -109,6 +109,14 @@ public class UserServiceImpl implements UserService {
         mother.setUser(user);
         if (profileDTO.getMobileNumber() != null) mother.setMobileNumber(profileDTO.getMobileNumber().trim());
         if (profileDTO.getDob() != null) mother.setDob(profileDTO.getDob());
+        if (profileDTO.getAge() != null) {
+            mother.setAge(profileDTO.getAge());
+        } else if (profileDTO.getDob() != null && !profileDTO.getDob().isBlank()) {
+            try {
+                java.time.LocalDate birthDate = java.time.LocalDate.parse(profileDTO.getDob().trim());
+                mother.setAge(java.time.Period.between(birthDate, java.time.LocalDate.now()).getYears());
+            } catch (Exception ignored) {}
+        }
         if (profileDTO.getBloodGroup() != null) mother.setBloodGroup(profileDTO.getBloodGroup());
         if (profileDTO.getAddress() != null) mother.setAddress(profileDTO.getAddress().trim());
         if (profileDTO.getCity() != null) mother.setCity(profileDTO.getCity().trim());

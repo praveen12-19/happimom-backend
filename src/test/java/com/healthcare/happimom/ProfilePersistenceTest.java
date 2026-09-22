@@ -135,6 +135,8 @@ public class ProfilePersistenceTest {
         MotherDetail mother = motherOpt.get();
         assertEquals("9876543210", mother.getMobileNumber());
         assertEquals("1998-05-15", mother.getDob());
+        assertEquals(Integer.valueOf(28), mother.getAge());
+        assertEquals(Integer.valueOf(28), updatedUser.getAge());
         assertEquals("O+", mother.getBloodGroup());
         assertEquals("Bengaluru", mother.getCity());
         assertEquals("123 Indiranagar, 2nd Stage", mother.getAddress());

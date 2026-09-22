@@ -40,6 +40,9 @@ public class Memory {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String fileUrl;
 
+    @Column(name = "public_id")
+    private String publicId;
+
     private String fileName;
     private String fileType;
     private Long fileSize;

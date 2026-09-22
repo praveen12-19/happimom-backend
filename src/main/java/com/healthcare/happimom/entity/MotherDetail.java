@@ -38,6 +38,7 @@ public class MotherDetail {
 
     private String mobileNumber;
     private String dob;
+    private Integer age;
     private String bloodGroup;
     private String address;
     private String city;

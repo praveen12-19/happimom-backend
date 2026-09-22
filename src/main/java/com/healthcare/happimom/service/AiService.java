@@ -15,4 +15,6 @@ public interface AiService {
     Map<String, Object> analyzeSymptom(AiSymptomRequestDTO request);
     Map<String, Object> analyzePrescriptionText(AiPrescriptionTextRequestDTO request);
     Map<String, Object> uploadPrescription(MultipartFile file, Long userId, String notes);
+    String explainDoctorConsultationReport(MultipartFile file, Long userId, String notes);
+    Map<String, Object> parsePrescriptionAndExtractAppointment(MultipartFile file, Long userId, String notes);
 }

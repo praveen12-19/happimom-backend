@@ -32,9 +32,12 @@ public class UploadController {
                 secureUrl = (String) uploadResult.get("url");
             }
 
+            String publicId = (String) uploadResult.get("public_id");
+
             Map<String, Object> resp = new HashMap<>();
             resp.put("success", true);
             resp.put("url", secureUrl);
+            resp.put("publicId", publicId);
             resp.put("fileName", file.getOriginalFilename());
             resp.put("size", file.getSize());
             resp.put("type", file.getContentType());
@@ -43,6 +46,21 @@ public class UploadController {
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             log.error("Failed to upload medical file: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/file")
+    public ResponseEntity<?> deleteFile(
+        
+            @RequestParam(value = "publicId", required = false) String publicId,
+            @RequestParam(value = "url", required = false) String url
+    ) {
+        try {
+            boolean deleted = cloudinaryService.deleteMedia(publicId, url, null);
+            return ResponseEntity.ok(Map.of("success", true, "deleted", deleted));
+        } catch (Exception e) {
+            log.error("Failed to delete file from Cloudinary: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
         }
     }

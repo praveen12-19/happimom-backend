@@ -122,12 +122,158 @@ public class CloudinaryService {
         }
     }
 
-    public void deleteFile(String publicId) {
-        if (publicId == null || publicId.isBlank()) return;
+    public boolean deleteFile(String publicId) {
+        return deleteMedia(publicId, null, null);
+    }
+
+    public boolean deleteFile(String publicId, String resourceType) {
+        if (publicId == null || publicId.isBlank()) return false;
+        return tryDestroy(publicId, resourceType != null ? resourceType : "image");
+    }
+
+    /**
+     * Delete media asset from Cloudinary using either publicId or fileUrl,
+     * automatically detecting and falling back across resource types (image, video, raw).
+     */
+    public boolean deleteMedia(String publicId, String fileUrl, String fileType) {
+        String finalPublicId = publicId;
+        if (finalPublicId == null || finalPublicId.isBlank()) {
+            finalPublicId = extractPublicId(fileUrl);
+        }
+
+        if (finalPublicId == null || finalPublicId.isBlank()) {
+            log.warn("Cannot delete file from Cloudinary: no publicId or valid URL provided");
+            return false;
+        }
+
+        // Determine primary resource type
+        String primaryType = "image";
+        if (fileType != null) {
+            String lower = fileType.toLowerCase();
+            if (lower.startsWith("video/") || lower.endsWith(".mp4") || lower.endsWith(".mov")
+                    || lower.endsWith(".webm") || lower.endsWith(".avi") || lower.endsWith(".mkv")) {
+                primaryType = "video";
+            } else if (lower.contains("pdf") || lower.contains("raw") || lower.contains("document")) {
+                primaryType = "raw";
+            }
+        }
+        if (fileUrl != null) {
+            String lowerUrl = fileUrl.toLowerCase();
+            if (lowerUrl.contains("/video/upload/")) {
+                primaryType = "video";
+            } else if (lowerUrl.contains("/raw/upload/")) {
+                primaryType = "raw";
+            }
+        }
+
+        // 1. Try deleting with primary resolved resource type
+        if (tryDestroy(finalPublicId, primaryType)) {
+            return true;
+        }
+
+        // 2. Try other resource types in case Cloudinary stored under different type (e.g. PDF as image)
+        String[] types = {"image", "video", "raw"};
+        for (String type : types) {
+            if (!type.equals(primaryType)) {
+                if (tryDestroy(finalPublicId, type)) {
+                    return true;
+                }
+            }
+        }
+
+        // 3. For raw files or files with extension in public ID, try with extension
+        if (fileUrl != null) {
+            String rawId = extractPublicIdWithExtension(fileUrl);
+            if (rawId != null && !rawId.equals(finalPublicId)) {
+                for (String type : new String[]{"raw", "image", "video"}) {
+                    if (tryDestroy(rawId, type)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        log.warn("Cloudinary file deletion finished: publicId {} (url: {}) could not be found or was already deleted", finalPublicId, fileUrl);
+        return false;
+    }
+
+    private boolean tryDestroy(String publicId, String resourceType) {
         try {
-            cloudinary.uploader().destroy(publicId, ObjectUtils.emptyMap());
+            Map<String, Object> params = ObjectUtils.asMap(
+                    "resource_type", resourceType,
+                    "invalidate", true
+            );
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = cloudinary.uploader().destroy(publicId, params);
+            if (result != null) {
+                String resStr = (String) result.get("result");
+                if ("ok".equalsIgnoreCase(resStr)) {
+                    log.info("Successfully deleted file from Cloudinary: publicId={}, resourceType={}", publicId, resourceType);
+                    return true;
+                }
+            }
         } catch (Exception e) {
-            log.warn("Could not delete file with publicId {} from Cloudinary: {}", publicId, e.getMessage());
+            log.debug("Cloudinary destroy attempt failed for publicId={}, resourceType={}: {}", publicId, resourceType, e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Extract Cloudinary publicId (without file extension) from URL.
+     */
+    public String extractPublicId(String fileUrl) {
+        String fullPath = extractPublicIdWithExtension(fileUrl);
+        if (fullPath == null) return null;
+        int dotIdx = fullPath.lastIndexOf('.');
+        if (dotIdx > 0 && dotIdx > fullPath.lastIndexOf('/')) {
+            return fullPath.substring(0, dotIdx);
+        }
+        return fullPath;
+    }
+
+    /**
+     * Extract Cloudinary public path (including file extension) from URL.
+     */
+    public String extractPublicIdWithExtension(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) return null;
+        try {
+            if (!fileUrl.contains("cloudinary.com") || !fileUrl.contains("/upload/")) {
+                return null;
+            }
+
+            int uploadIdx = fileUrl.indexOf("/upload/");
+            String afterUpload = fileUrl.substring(uploadIdx + "/upload/".length());
+
+            int queryIdx = afterUpload.indexOf('?');
+            if (queryIdx != -1) {
+                afterUpload = afterUpload.substring(0, queryIdx);
+            }
+
+            // If it starts with known application prefix
+            int appFolderIdx = afterUpload.indexOf("happimom_");
+            if (appFolderIdx != -1) {
+                return afterUpload.substring(appFolderIdx);
+            }
+
+            // Otherwise, strip version prefix if present, e.g. v172567890/
+            String[] parts = afterUpload.split("/");
+            int start = 0;
+            for (int i = 0; i < parts.length; i++) {
+                if (parts[i].matches("^v\\d+$")) {
+                    start = i + 1;
+                    break;
+                }
+            }
+
+            StringBuilder sb = new StringBuilder();
+            for (int i = start; i < parts.length; i++) {
+                if (sb.length() > 0) sb.append("/");
+                sb.append(parts[i]);
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("Failed to extract publicId from URL {}: {}", fileUrl, e.getMessage());
+            return null;
         }
     }
 }

@@ -8,7 +8,9 @@ import com.healthcare.happimom.dto.AiChatRequestDTO;
 import com.healthcare.happimom.dto.AiChatResponseDTO;
 import com.healthcare.happimom.dto.AiPrescriptionTextRequestDTO;
 import com.healthcare.happimom.dto.AiSymptomRequestDTO;
+import com.healthcare.happimom.entity.Appointment;
 import com.healthcare.happimom.entity.User;
+import com.healthcare.happimom.repository.AppointmentRepository;
 import com.healthcare.happimom.repository.UserRepository;
 import com.healthcare.happimom.service.AiService;
 import org.slf4j.Logger;
@@ -34,6 +36,7 @@ public class AiServiceImpl implements AiService {
     private static final Logger log = LoggerFactory.getLogger(AiServiceImpl.class);
 
     private final UserRepository userRepository;
+    private final AppointmentRepository appointmentRepository;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
 
@@ -41,11 +44,12 @@ public class AiServiceImpl implements AiService {
     private static final String DEFAULT_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
     private static final String GROQ_MODEL = "qwen/qwen3.8-27b";
 
-    public AiServiceImpl(UserRepository userRepository) {
+    public AiServiceImpl(UserRepository userRepository, AppointmentRepository appointmentRepository) {
         this.userRepository = userRepository;
+        this.appointmentRepository = appointmentRepository;
         this.objectMapper = new ObjectMapper();
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
@@ -96,8 +100,32 @@ public class AiServiceImpl implements AiService {
                     if (u.getAllergies() != null) sb.append("- Allergies: ").append(u.getAllergies()).append("\n");
                     if (u.getBloodGroup() != null) sb.append("- Blood Group: ").append(u.getBloodGroup()).append("\n");
                 }
+
+                List<Appointment> appts = appointmentRepository.findByUserIdOrderByAppointmentDateAsc(userId);
+                if (appts != null && !appts.isEmpty()) {
+                    sb.append("\nUser Medical Appointments & Calendar Memory:\n");
+                    sb.append("- Current System Date: ").append(java.time.LocalDate.now()).append("\n");
+                    for (Appointment a : appts) {
+                        sb.append("  * Date: ").append(a.getAppointmentDate())
+                                .append(" | Doctor: ").append(a.getDoctorName() != null ? a.getDoctorName() : "Obstetrician")
+                                .append(" | Time: ").append(a.getAppointmentTime() != null ? a.getAppointmentTime() : "")
+                                .append(" | Purpose: ").append(a.getPurpose() != null ? a.getPurpose() : "")
+                                .append(" | Status: ").append(a.getStatus())
+                                .append(a.getReportFileUrl() != null ? " [Report Uploaded & Analyzed]" : " [NO Report Uploaded Yet]");
+                        if (a.getReportAnalysis() != null && !a.getReportAnalysis().isBlank()) {
+                            String snippet = a.getReportAnalysis().replaceAll("\n", " ");
+                            if (snippet.length() > 140) snippet = snippet.substring(0, 140) + "...";
+                            sb.append(" (Findings: ").append(snippet).append(")");
+                        }
+                        sb.append("\n");
+                    }
+                    sb.append("\nAPPOINTMENT REMEMBRANCE & DOCTOR REPORT PROACTIVE RULES:\n");
+                    sb.append("1. If an appointment is scheduled for today or in the past and does NOT have a report uploaded yet, warmly ask the mother how her consultation went and kindly ask her to upload or attach her doctor's report/prescription so you can explain what the doctor said and safely store it in her Cloudinary vault.\n");
+                    sb.append("2. If the user mentions scheduling or having an appointment on a specific date, acknowledge it enthusiastically and remind her that it is recorded on her calendar.\n");
+                    sb.append("3. Always explain medical terms, doctor remarks, and ultrasound measurements in simple, encouraging, and reassuring words.\n");
+                }
             } catch (Exception e) {
-                log.warn("Could not load user context for AI: {}", e.getMessage());
+                log.warn("Could not load user context/appointments for AI: {}", e.getMessage());
             }
         }
 
@@ -284,6 +312,7 @@ public class AiServiceImpl implements AiService {
 
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", GROQ_MODEL);
+        root.put("max_tokens", 800);
 
         ArrayNode messages = root.putArray("messages");
         ObjectNode sysNode = messages.addObject();
@@ -471,6 +500,136 @@ public class AiServiceImpl implements AiService {
             log.error("uploadPrescription error: {}", e.getMessage());
             result.put("status", "error");
             result.put("error", "Failed to process prescription file: " + e.getMessage());
+            return result;
+        }
+    }
+
+    @Override
+    public String explainDoctorConsultationReport(MultipartFile file, Long userId, String notes) {
+        try {
+            String base64 = null;
+            String mime = "image/jpeg";
+            if (file != null && !file.isEmpty()) {
+                byte[] bytes = file.getBytes();
+                base64 = Base64.getEncoder().encodeToString(bytes);
+                mime = file.getContentType() != null ? file.getContentType() : "image/jpeg";
+            }
+
+            String prompt = "You are HappiMoM Obstetric Health Companion and Doctor Report Interpreter.\n"
+                    + "Carefully analyze this post-consultation doctor report, ultrasound sheet, or clinical visit summary for an expectant mother.\n"
+                    + (notes != null && !notes.isBlank() ? "Additional user notes / doctor remarks: \"" + notes + "\"\n" : "")
+                    + "Please explain what the doctor told them in clear, compassionate, and reassuring language.\n\n"
+                    + "Structure your response with these clear sections:\n"
+                    + "### 🩺 1. Consultation Summary\n"
+                    + "Explain in simple words the main purpose and key conclusion of the visit.\n\n"
+                    + "### 👶 2. Baby's Development & Vitals\n"
+                    + "Explain any fetal measurements (e.g. heartbeat, gestational age, amniotic fluid, growth percentiles) in reassuring terms.\n\n"
+                    + "### 📋 3. What Your Doctor Advised\n"
+                    + "List the doctor's specific advice, diet/rest recommendations, or prescribed medication changes.\n\n"
+                    + "### 🌸 4. Reassurance & Next Steps\n"
+                    + "Provide comforting words and note when the next follow-up or test is expected.";
+
+            String systemPrompt = buildSystemPrompt(userId);
+
+            if (base64 != null) {
+                try {
+                    return callGemini(prompt, Collections.emptyList(), base64, mime, systemPrompt);
+                } catch (Exception e) {
+                    log.warn("Gemini vision failed for doctor report: {}", e.getMessage());
+                }
+            }
+
+            // Fallback to Groq text
+            String textPrompt = prompt + "\nNotes: " + (notes != null ? notes : "Regular prenatal consultation completed.");
+            return callGroq(textPrompt, Collections.emptyList(), systemPrompt);
+
+        } catch (Exception e) {
+            log.error("explainDoctorConsultationReport error: {}", e.getMessage(), e);
+            return "### 🩺 Consultation Summary\n"
+                    + "Your doctor's consultation report has been safely uploaded and secured in your Cloudinary medical vault.\n\n"
+                    + "### 📋 Doctor Notes\n"
+                    + (notes != null && !notes.isBlank() ? notes : "Regular prenatal checkup completed.") + "\n\n"
+                    + "### 🌸 Maternal Guidance\n"
+                    + "Please continue following your obstetrician's guidance closely, stay hydrated, and take your prescribed prenatal vitamins.";
+        }
+    }
+
+    @Override
+    public Map<String, Object> parsePrescriptionAndExtractAppointment(MultipartFile file, Long userId, String notes) {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            String base64 = null;
+            String mime = "image/jpeg";
+            if (file != null && !file.isEmpty()) {
+                byte[] bytes = file.getBytes();
+                base64 = Base64.getEncoder().encodeToString(bytes);
+                mime = file.getContentType() != null ? file.getContentType() : "image/jpeg";
+            }
+
+            String prompt = "You are HappiMoM Obstetric Clinical Assistant.\n"
+                    + "Analyze this prenatal prescription or medical receipt image.\n"
+                    + (notes != null && !notes.isBlank() ? "User Notes: \"" + notes + "\"\n" : "")
+                    + "1. Identify medications, dosages, prenatal safety reassurance, and doctor's instructions.\n"
+                    + "2. Identify any mentioned next visit / appointment date (formatted as YYYY-MM-DD if found).\n"
+                    + "3. Identify doctor name and clinic name if visible.\n\n"
+                    + "At the VERY END of your response, output a strict JSON block enclosed in ```json ... ``` with extracted appointment metadata:\n"
+                    + "```json\n"
+                    + "{\n"
+                    + "  \"appointmentDate\": \"YYYY-MM-DD or null\",\n"
+                    + "  \"doctorName\": \"Doctor name or null\",\n"
+                    + "  \"purpose\": \"Purpose of visit or null\"\n"
+                    + "}\n"
+                    + "```";
+
+            String systemPrompt = buildSystemPrompt(userId);
+            String aiResponse = null;
+
+            if (base64 != null) {
+                try {
+                    aiResponse = callGemini(prompt, Collections.emptyList(), base64, mime, systemPrompt);
+                } catch (Exception e) {
+                    log.warn("Gemini vision failed for prescription: {}", e.getMessage());
+                }
+            }
+
+            if (aiResponse == null) {
+                aiResponse = callGroq(prompt + (notes != null ? " Notes: " + notes : ""), Collections.emptyList(), systemPrompt);
+            }
+
+            // Extract JSON metadata block if present
+            String extractedDate = null;
+            String extractedDoctor = null;
+            String extractedPurpose = null;
+
+            if (aiResponse != null && aiResponse.contains("```json")) {
+                try {
+                    int start = aiResponse.indexOf("```json") + 7;
+                    int end = aiResponse.indexOf("```", start);
+                    if (end > start) {
+                        String jsonBlock = aiResponse.substring(start, end).trim();
+                        JsonNode jsonNode = objectMapper.readTree(jsonBlock);
+                        if (jsonNode.hasNonNull("appointmentDate")) extractedDate = jsonNode.get("appointmentDate").asText();
+                        if (jsonNode.hasNonNull("doctorName")) extractedDoctor = jsonNode.get("doctorName").asText();
+                        if (jsonNode.hasNonNull("purpose")) extractedPurpose = jsonNode.get("purpose").asText();
+                    }
+                } catch (Exception ex) {
+                    log.debug("Could not parse JSON block from AI response: {}", ex.getMessage());
+                }
+            }
+
+            String cleanAnalysis = aiResponse != null ? aiResponse : "Prescription received and securely stored in Cloudinary.";
+            if (cleanAnalysis.contains("```json")) {
+                cleanAnalysis = cleanAnalysis.substring(0, cleanAnalysis.indexOf("```json")).trim();
+            }
+
+            result.put("analysis", cleanAnalysis);
+            result.put("appointmentDate", extractedDate);
+            result.put("doctorName", extractedDoctor);
+            result.put("purpose", extractedPurpose);
+            return result;
+        } catch (Exception e) {
+            log.error("parsePrescriptionAndExtractAppointment error: {}", e.getMessage(), e);
+            result.put("analysis", "Prescription received and securely stored. Follow your doctor's dosage advice strictly.");
             return result;
         }
     }
